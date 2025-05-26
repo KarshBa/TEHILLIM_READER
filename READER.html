@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Accessible Tehillim Reader</title>
+  <style>
+    body {
+      font-size: 1.2em;
+      line-height: 1.6;
+      padding: 1em;
+    }
+    #output {
+      white-space: pre-wrap;
+      margin-top: 1em;
+    }
+    input[type="file"] {
+      font-size: 1em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Accessible Tehillim Reader</h1>
+  <p>
+    Select a UTF‑8 “.txt” file of Tehillim.  It will render below, 
+    splitting each Hebrew cluster into letter, vowel and taʿam spans.
+  </p>
+  <input type="file" id="file-input" accept=".txt">
+
+  <div id="output" role="main" aria-live="polite"></div>
+
+  <script>
+    // maps Hebrew base letters → their names
+    const letterNames = {
+      'א':'aleph','ב':'bet','ג':'gimel','ד':'dalet','ה':'he','ו':'vav','ז':'zayin',
+      'ח':'het','ט':'tet','י':'yod','כ':'kaf','ך':'kaf (final)','ל':'lamed',
+      'מ':'mem','ם':'mem (final)','נ':'nun','ן':'nun (final)','ס':'samekh',
+      'ע':'ayin','פ':'pe','ף':'pe (final)','צ':'tsadi','ץ':'tsadi (final)',
+      'ק':'qof','ר':'resh','ש':'shin','ת':'tav'
+    };
+
+    // Hebrew niqqud (vowels) and other diacritic names
+    const vowelNames = {
+      '\u05B0':'sheva','\u05B1':'hataf segol','\u05B2':'hataf patach','\u05B3':'hataf kamatz',
+      '\u05B4':'hiriq','\u05B5':'tsere','\u05B6':'segol','\u05B7':'patach',
+      '\u05B8':'qamats','\u05B9':'holam','\u05BB':'qubuts','\u05BC':'dagesh',
+      '\u05BD':'meteg','\u05BF':'rafe','\u05C7':'qamats qatan'
+    };
+
+    // Cantillation marks (taʿamim)
+    const taamNames = {
+      '\u0591':'etnaḥta','\u0592':'segolta','\u0593':'shalshelet','\u0594':'zaqef qatan',
+      '\u0595':'zaqef gadol','\u0596':'tipḥa','\u0597':'munach','\u0598':'mercha',
+      '\u0599':'mercha‑tipḥa','\u059A':'darga','\u059C':'pashta','\u059D':'yetiv',
+      '\u059E':'tevir','\u05A0':'gershayim','\u05A2':'munach legarmeh','\u05A3':'merkha kefula',
+      '\u05A4':'darga rere','\u05A5':'pazer','\u05A6':'telisha gedola','\u05A7':'pazer rere',
+      '\u05A8':'munach rere','\u05A9':'mahapakh','\u05AB':'ole','\u05AC':'iluy',
+      '\u05BB':'qubuts','\u05BD':'meteg','\u05C3':'sof pasuq'
+    };
+
+    // read selected file
+    document.getElementById('file-input').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => renderText(reader.result);
+      reader.readAsText(file, 'utf‑8');
+    });
+
+    function renderText(text) {
+      const out = document.getElementById('output');
+      out.innerHTML = '';
+
+      // build clusters: each letter + following marks
+      const clusters = [];
+      let curr = '';
+      for (const ch of text) {
+        if (/\p{M}/u.test(ch)) {
+          curr += ch;
+        } else {
+          if (curr) clusters.push(curr);
+          curr = ch;
+        }
+      }
+      if (curr) clusters.push(curr);
+
+      // render each cluster
+      clusters.forEach(cluster => {
+        const base = cluster[0];
+        const marks = cluster.slice(1).split('');
+        // newline → <br>
+        if (base === '\n') {
+          out.appendChild(document.createElement('br'));
+          return;
+        }
+        // whitespace or ASCII punctuation → text node
+        if (!/\p{Script=Hebrew}/u.test(base)) {
+          out.appendChild(document.createTextNode(cluster));
+          return;
+        }
+        // if a base‐letter
+        if (letterNames[base]) {
+          const spanL = document.createElement('span');
+          spanL.textContent = base;
+          spanL.setAttribute('aria-label', letterNames[base]);
+          out.appendChild(spanL);
+          marks.forEach(m => {
+            const spanM = document.createElement('span');
+            spanM.textContent = m;
+            const lbl = vowelNames[m] || taamNames[m] || ('mark ‘' + m + '’');
+            spanM.setAttribute('aria-label', lbl);
+            out.appendChild(spanM);
+          });
+        }
+        // stray diacritic as its own span
+        else if (vowelNames[base] || taamNames[base]) {
+          const spanD = document.createElement('span');
+          spanD.textContent = base;
+          spanD.setAttribute('aria-label', vowelNames[base] || taamNames[base]);
+          out.appendChild(spanD);
+        }
+        else {
+          // any other Hebrew char
+          out.appendChild(document.createTextNode(cluster));
+        }
+      });
+    }
+  </script>
+</body>
+</html>
