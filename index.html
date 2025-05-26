@@ -9,13 +9,13 @@
       line-height: 1.6;
       padding: 1em;
     }
-    #output {
-      white-space: pre-wrap;
-      margin-top: 1em;
-    }
     #status {
       font-style: italic;
       color: #555;
+    }
+    #output {
+      white-space: pre-wrap;
+      margin-top: 1em;
     }
   </style>
 </head>
@@ -25,6 +25,7 @@
   <div id="output" role="main" aria-live="polite"></div>
 
   <script>
+    // maps Hebrew base letters → their names
     const letterNames = {
       'א':'aleph','ב':'bet','ג':'gimel','ד':'dalet','ה':'he','ו':'vav','ז':'zayin',
       'ח':'het','ט':'tet','י':'yod','כ':'kaf','ך':'kaf (final)','ל':'lamed',
@@ -33,6 +34,7 @@
       'ק':'qof','ר':'resh','ש':'shin','ת':'tav'
     };
 
+    // Hebrew niqqud (vowels) and other diacritic names
     const vowelNames = {
       '\u05B0':'sheva','\u05B1':'hataf segol','\u05B2':'hataf patach','\u05B3':'hataf kamatz',
       '\u05B4':'hiriq','\u05B5':'tsere','\u05B6':'segol','\u05B7':'patach',
@@ -40,6 +42,7 @@
       '\u05BD':'meteg','\u05BF':'rafe','\u05C7':'qamats qatan'
     };
 
+    // Cantillation marks (taʿamim)
     const taamNames = {
       '\u0591':'etnaḥta','\u0592':'segolta','\u0593':'shalshelet','\u0594':'zaqef qatan',
       '\u0595':'zaqef gadol','\u0596':'tipḥa','\u0597':'munach','\u0598':'mercha',
@@ -51,7 +54,8 @@
     };
 
     window.addEventListener('DOMContentLoaded', () => {
-      fetch('/tehillim.txt')
+      // Fetch relative to the same folder as index.html
+      fetch('tehillim.txt')
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.text();
@@ -62,7 +66,7 @@
         })
         .catch(err => {
           document.getElementById('status').textContent =
-            'Error loading /tehillim.txt: ' + err.message;
+            'Error loading tehillim.txt: ' + err.message;
         });
     });
 
@@ -70,7 +74,7 @@
       const out = document.getElementById('output');
       out.innerHTML = '';
 
-      // split into clusters: base letter + combining marks
+      // build clusters: each letter + following marks
       const clusters = [];
       let curr = '';
       for (const ch of text) {
@@ -86,14 +90,17 @@
       clusters.forEach(cluster => {
         const base = cluster[0];
         const marks = cluster.slice(1).split('');
+        // newline → <br>
         if (base === '\n') {
           out.appendChild(document.createElement('br'));
           return;
         }
+        // non-Hebrew text → plain
         if (!/\p{Script=Hebrew}/u.test(base)) {
           out.appendChild(document.createTextNode(cluster));
           return;
         }
+        // Hebrew base letter
         if (letterNames[base]) {
           const spanL = document.createElement('span');
           spanL.textContent = base;
@@ -102,16 +109,20 @@
           marks.forEach(m => {
             const spanM = document.createElement('span');
             spanM.textContent = m;
-            const lbl = vowelNames[m] || taamNames[m] || ('mark ‘' + m + '’');
+            const lbl = vowelNames[m] || taamNames[m] || (`mark ‘${m}’`);
             spanM.setAttribute('aria-label', lbl);
             out.appendChild(spanM);
           });
-        } else if (vowelNames[base] || taamNames[base]) {
+        }
+        // stray diacritic
+        else if (vowelNames[base] || taamNames[base]) {
           const spanD = document.createElement('span');
           spanD.textContent = base;
           spanD.setAttribute('aria-label', vowelNames[base] || taamNames[base]);
           out.appendChild(spanD);
-        } else {
+        }
+        // any other character
+        else {
           out.appendChild(document.createTextNode(cluster));
         }
       });
