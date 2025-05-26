@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Accessible Tehillim Reader</title>
   <style>
-    /* overall dark theme */
+    /* dark theme */
     body {
       background-color: #000;
       color: #fff;
@@ -13,20 +13,33 @@
       padding: 1em;
       margin: 0;
     }
-    /* status message */
     #status {
       font-style: italic;
       color: #ccc;
     }
+    /* Psalm selector */
+    #psalm-container {
+      margin: 1em 0;
+    }
+    label, select {
+      font-size: 1em;
+      color: #fff;
+    }
+    select {
+      background: #222;
+      color: #fff;
+      border: 1px solid #555;
+      padding: 0.3em;
+    }
     /* the “canvas” where Tehillim appears */
     #output {
       white-space: pre-wrap;
-      margin-top: 1em;
       background-color: #000;
       color: #fff;
-      direction: rtl;        /* right-to-left */
-      text-align: right;     /* align Hebrew to the right */
+      direction: rtl;        /* Hebrew reads right-to-left */
+      text-align: right;     /* align text to the right edge */
       padding: 1em;
+      margin-top: 1em;
     }
     /* ensure spans inherit white text */
     #output span {
@@ -37,9 +50,18 @@
 <body>
   <h1>Accessible Tehillim Reader</h1>
   <p id="status">Loading Tehillim…</p>
+
+  <div id="psalm-container">
+    <label for="psalm-select">Select Psalm: </label>
+    <select id="psalm-select" aria-label="Select Psalm">
+      <!-- options will be populated dynamically -->
+    </select>
+  </div>
+
   <div id="output" role="main" aria-live="polite"></div>
 
   <script>
+    // maps Hebrew base letters → their names
     const letterNames = {
       'א':'aleph','ב':'bet','ג':'gimel','ד':'dalet','ה':'he','ו':'vav','ז':'zayin',
       'ח':'het','ט':'tet','י':'yod','כ':'kaf','ך':'kaf (final)','ל':'lamed',
@@ -47,12 +69,16 @@
       'ע':'ayin','פ':'pe','ף':'pe (final)','צ':'tsadi','ץ':'tsadi (final)',
       'ק':'qof','ר':'resh','ש':'shin','ת':'tav'
     };
+
+    // Hebrew niqqud (vowels) and other diacritic names
     const vowelNames = {
       '\u05B0':'sheva','\u05B1':'hataf segol','\u05B2':'hataf patach','\u05B3':'hataf kamatz',
       '\u05B4':'hiriq','\u05B5':'tsere','\u05B6':'segol','\u05B7':'patach',
       '\u05B8':'qamats','\u05B9':'holam','\u05BB':'qubuts','\u05BC':'dagesh',
       '\u05BD':'meteg','\u05BF':'rafe','\u05C7':'qamats qatan'
     };
+
+    // Cantillation marks (taʿamim)
     const taamNames = {
       '\u0591':'etnaḥta','\u0592':'segolta','\u0593':'shalshelet','\u0594':'zaqef qatan',
       '\u0595':'zaqef gadol','\u0596':'tipḥa','\u0597':'munach','\u0598':'mercha',
@@ -63,26 +89,90 @@
       '\u05BB':'qubuts','\u05BD':'meteg','\u05C3':'sof pasuq'
     };
 
+    let fullText = '';
+    let psalms = [];
+
     window.addEventListener('DOMContentLoaded', () => {
+      const statusEl = document.getElementById('status');
       fetch('tehillim.txt')
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.text();
         })
         .then(text => {
-          document.getElementById('status').textContent = '';
-          renderText(text);
+          fullText = text;
+          parsePsalms(text);
+          populateMenu();
+          statusEl.textContent = '';
+          renderText(fullText);
         })
         .catch(err => {
-          document.getElementById('status').textContent =
-            'Error loading tehillim.txt: ' + err.message;
+          statusEl.textContent = 'Error loading tehillim.txt: ' + err.message;
         });
+
+      document.getElementById('psalm-select').addEventListener('change', e => {
+        const idx = e.target.value;
+        if (idx === '') {
+          renderText(fullText);
+        } else {
+          renderText(psalms[idx].raw);
+        }
+      });
     });
 
+    // split the full text into individual psalms based on Hebrew numeral + geresh at start and {פ} at end
+    function parsePsalms(text) {
+      const regex = /^([אבגדהוזחטיכלמנסעפצקרשת]+׳)[\s\S]*?\{פ\}/gm;
+      let match, lastIndex = 0, i = 0;
+      while ((match = regex.exec(text)) !== null) {
+        const start = match.index;
+        // if this isn’t the first, grab the text between lastIndex and start for previous psalm
+        if (i > 0 && lastIndex < start) {
+          psalms[i - 1].raw = text.slice(psalms[i - 1].start, start);
+        }
+        // record new psalm
+        psalms.push({
+          number: match[1],
+          start: start,
+          raw: ''  // filled in next iteration or after loop
+        });
+        lastIndex = start;
+        i++;
+      }
+      // the last psalm: slice from its start to the end of its {פ}
+      if (psalms.length) {
+        const last = psalms[psalms.length - 1];
+        const endMatch = /\{פ\}/.exec(text.slice(last.start));
+        if (endMatch) {
+          last.raw = text.slice(last.start, last.start + endMatch.index + endMatch[0].length);
+        }
+      }
+      // if no psalms found, treat entire text as one
+      if (psalms.length === 0) {
+        psalms.push({ number: 'All', raw: text });
+      }
+    }
+
+    // build the <select> menu
+    function populateMenu() {
+      const select = document.getElementById('psalm-select');
+      // “All Psalms” option
+      const allOpt = document.createElement('option');
+      allOpt.value = '';
+      allOpt.textContent = 'All Psalms';
+      select.appendChild(allOpt);
+      psalms.forEach((ps, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = 'Psalm ' + ps.number;
+        select.appendChild(opt);
+      });
+    }
+
+    // render given Hebrew text (clusters → spans with aria-labels)
     function renderText(text) {
       const out = document.getElementById('output');
       out.innerHTML = '';
-
       const clusters = [];
       let curr = '';
       for (const ch of text) {
